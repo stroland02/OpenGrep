@@ -26,11 +26,12 @@ import {
   Td,
   Textarea,
   Th,
+  TimeAgo,
   Toggle,
   useToast,
 } from "@/components/ui";
 import { GitHubMark } from "@/components/oauth-buttons";
-import { cn, relativeTime, truncate } from "@/lib/utils";
+import { cn, truncate } from "@/lib/utils";
 import {
   createContext,
   deleteContexts,
@@ -204,7 +205,9 @@ export function CustomContextView({
               <Td className="text-ink-muted">
                 {r.metrics.usageCount} {r.metrics.usageCount === 1 ? "review" : "reviews"}
               </Td>
-              <Td className="text-ink-muted">{relativeTime(r.updatedAt)}</Td>
+              <Td className="text-ink-muted">
+                <TimeAgo date={r.updatedAt} />
+              </Td>
               <Td>
                 <span className="mono-status text-ink-muted">
                   {r.active ? "ACTIVE" : "INACTIVE"}

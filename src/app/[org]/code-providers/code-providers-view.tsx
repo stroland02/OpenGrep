@@ -3,9 +3,16 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Clock, MoreVertical, Plus } from "lucide-react";
-import { Button, Card, Modal, PageHeader, useToast } from "@/components/ui";
+import {
+  Button,
+  Card,
+  Modal,
+  PageHeader,
+  TimeAgo,
+  useToast,
+} from "@/components/ui";
 import { GitHubMark } from "@/components/oauth-buttons";
-import { cn, relativeTime } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { connectProvider, disconnectProvider, syncProvider } from "./actions";
 
 type Provider = {
@@ -117,7 +124,7 @@ export function CodeProvidersView({
                   <Clock className="size-4" />
                   <span>Last Sync:</span>
                   <span className="text-ink">
-                    {p.lastSyncAt ? relativeTime(p.lastSyncAt) : "never"}
+                    {p.lastSyncAt ? <TimeAgo date={p.lastSyncAt} /> : "never"}
                   </span>
                 </div>
 

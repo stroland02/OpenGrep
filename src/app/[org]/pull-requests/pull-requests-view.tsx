@@ -15,10 +15,11 @@ import {
   TableEmpty,
   Td,
   Th,
+  TimeAgo,
   useToast,
 } from "@/components/ui";
 import { GitHubMark } from "@/components/oauth-buttons";
-import { cn, relativeTime, truncate } from "@/lib/utils";
+import { cn, truncate } from "@/lib/utils";
 import { rerunReviews, toggleAddressed, voteOnComment } from "./actions";
 
 type Comment = {
@@ -161,7 +162,9 @@ export function PullRequestsView({ handle, rows }: { handle: string; rows: Row[]
                 <StatusChip status={r.status} />
               </Td>
               <Td className="tabular-nums">{r.reviewCount}</Td>
-              <Td className="text-ink-muted">{relativeTime(r.updatedAt)}</Td>
+              <Td className="text-ink-muted">
+                <TimeAgo date={r.updatedAt} />
+              </Td>
             </tr>
           ))}
         </tbody>

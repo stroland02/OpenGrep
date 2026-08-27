@@ -24,8 +24,18 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    // Browser extensions commonly stamp attributes onto <html> and <body>
+    // between the server HTML arriving and React hydrating, which React then
+    // reports as a mismatch. suppressHydrationWarning applies to these two
+    // elements' own attributes only — one level deep — so genuine mismatches
+    // anywhere inside the app are still reported.
+    <html
+      lang="en"
+      className={`${sans.variable} ${mono.variable}`}
+      suppressHydrationWarning
+    >
       <body
+        suppressHydrationWarning
         style={{
           fontFamily: "var(--font-jakarta), system-ui, sans-serif",
         }}

@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { cn } from "@/lib/utils";
+import { cn, longDate, relativeTime } from "@/lib/utils";
 import { Check, ChevronsUpDown, X, Search, Minus } from "lucide-react";
 
 /* ---------------------------------------------------------------------------
@@ -565,6 +565,26 @@ export function LoadingDots() {
       <span className="dot-2">•</span>
       <span className="dot-3">•</span>
     </span>
+  );
+}
+
+/**
+ * Relative timestamps ("about 3 hours ago") are computed from the current
+ * clock, so the server and the client can legitimately disagree when hydration
+ * lands on the other side of a minute boundary. suppressHydrationWarning
+ * covers this element's own text, which is exactly the intended difference;
+ * the absolute date is exposed as a tooltip and in `dateTime` for machines.
+ */
+export function TimeAgo({ date, className }: { date: string; className?: string }) {
+  return (
+    <time
+      dateTime={date}
+      title={longDate(date)}
+      className={className}
+      suppressHydrationWarning
+    >
+      {relativeTime(date)}
+    </time>
   );
 }
 
