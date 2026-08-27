@@ -44,3 +44,7 @@ Thumbs.db
 # Misc
 .turbo/
 .vercel/
+
+# OpenGrep local database
+prisma/dev.db
+prisma/dev.db-journal

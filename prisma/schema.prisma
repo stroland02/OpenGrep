@@ -1,0 +1,383 @@
+// OpenGrep data model.
+// Derived from every concrete record visible across the 135 reference screenshots;
+// see docs/screenshot-catalog/ for the evidence behind each field.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  // SQLite keeps setup to zero on Windows. Swapping to Postgres is a provider +
+  // connection-string change; no model below depends on SQLite specifics.
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Identity
+// ---------------------------------------------------------------------------
+
+model User {
+  id           String  @id @default(cuid())
+  email        String  @unique
+  passwordHash String
+  name         String
+  avatarUrl    String?
+
+  // Personal Settings > Account Settings (frames 120-124)
+  weeklyDigest Boolean @default(true)
+
+  // Personal Settings > Review Settings (frame 122)
+  showAiFixPrompts    Boolean @default(true)
+  personalSummary     Boolean @default(true)
+  personalSummaryOpen Boolean @default(true)
+  personalIssuesTable Boolean @default(true)
+
+  // Onboarding survey (frames 7-10)
+  challenges    String? // JSON array
+  heardAboutUs  String?
+  onboardedAt   DateTime?
+
+  createdAt DateTime @default(now())
+
+  memberships    Membership[]
+  linkedAccounts LinkedAccount[]
+  sessions       Session[]
+  integrations   PersonalIntegration[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+// "Linked Accounts" — PROVIDER | ACTIONS table (frames 120, 123, 124).
+// A linked provider account is a prerequisite for personal review settings.
+model LinkedAccount {
+  id       String @id @default(cuid())
+  userId   String
+  provider String // GITHUB | GITLAB
+  handle   String
+
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, provider])
+}
+
+// "Personal Integrations" — INTEGRATION | STATUS | ACTIONS (frame 121).
+model PersonalIntegration {
+  id     String @id @default(cuid())
+  userId String
+  name   String // e.g. "Cursor Cloud Agents"
+  status String @default("NOT_CONFIGURED") // NOT_CONFIGURED | CONNECTED
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, name])
+}
+
+// ---------------------------------------------------------------------------
+// Tenancy
+// ---------------------------------------------------------------------------
+
+model Organization {
+  id      String @id @default(cuid())
+  name    String
+  handle  String @unique
+  website String?
+
+  // "COMPANY SIZE" chip group (frame 6)
+  companySize String?
+
+  // Trial banner is persistent chrome on every authenticated page.
+  trialEndsAt DateTime
+
+  // Organization Settings > Organization (frames 92, 103)
+  telemetryEnabled    Boolean @default(true)
+  featureTipsEnabled  Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  memberships     Membership[]
+  providers       CodeProvider[]
+  repositories    Repository[]
+  contexts        CustomContext[]
+  apiKeys         ApiKey[]
+  paymentMethods  PaymentMethod[]
+  invoices        Invoice[]
+  reviewSettings  CodeReviewSettings?
+}
+
+// A PENDING membership *is* an invitation. The People table renders both
+// states from this one list (frames 94, 104, 109, 110).
+model Membership {
+  id     String @id @default(cuid())
+  userId String?
+  orgId  String
+
+  // Invitations exist before a user does, so the email lives here too.
+  email  String
+  role   String @default("MEMBER") // ADMIN | MEMBER
+  status String @default("ACTIVE") // ACTIVE | PENDING
+
+  createdAt DateTime @default(now())
+
+  user User?        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@unique([orgId, email])
+  @@index([userId])
+}
+
+// ---------------------------------------------------------------------------
+// Source control
+// ---------------------------------------------------------------------------
+
+model CodeProvider {
+  id         String    @id @default(cuid())
+  orgId      String
+  type       String // GITHUB | GITLAB
+  accountName String
+  teamCount  Int       @default(1)
+  lastSyncAt DateTime?
+
+  createdAt DateTime @default(now())
+
+  org          Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  repositories Repository[]
+
+  @@unique([orgId, type])
+}
+
+model Repository {
+  id            String  @id @default(cuid())
+  orgId         String
+  providerId    String
+  owner         String
+  name          String
+  defaultBranch String  @default("main")
+
+  // Repo Settings modal Enabled/Disabled tabs. Disabled repos disappear from
+  // the metrics table entirely (frames 45-50).
+  enabled Boolean @default(true)
+
+  createdAt DateTime @default(now())
+
+  org          Organization  @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  provider     CodeProvider  @relation(fields: [providerId], references: [id], onDelete: Cascade)
+  pullRequests PullRequest[]
+  contexts     CustomContext[]
+  contextFiles ContextFile[]
+
+  @@unique([orgId, owner, name])
+}
+
+model PullRequest {
+  id       String @id @default(cuid())
+  repoId   String
+  number   Int
+  title    String
+  branch   String
+  author   String @default("")
+
+  // COMPLETED | PENDING | FAILED. Rerun drives COMPLETED -> PENDING -> COMPLETED
+  // and reviewCount increments only on completion (frames 68-71).
+  status String @default("COMPLETED")
+
+  isDraft   Boolean   @default(false)
+  mergedAt  DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  repo    Repository @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  reviews Review[]
+
+  @@unique([repoId, number])
+}
+
+// ---------------------------------------------------------------------------
+// Review output
+// ---------------------------------------------------------------------------
+
+model Review {
+  id            String @id @default(cuid())
+  pullRequestId String
+
+  status          String @default("COMPLETED") // PENDING | COMPLETED | FAILED
+  summary         String @default("")
+  confidenceScore Int    @default(0) // out of 5 (frame 19)
+  sequenceDiagram String @default("")
+
+  createdAt DateTime @default(now())
+
+  pullRequest PullRequest     @relation(fields: [pullRequestId], references: [id], onDelete: Cascade)
+  comments    ReviewComment[]
+
+  @@index([pullRequestId])
+}
+
+model ReviewComment {
+  id       String @id @default(cuid())
+  reviewId String
+
+  filePath String
+  line     Int
+  severity String // P0 | P1 | P2
+  body     String
+  rule     String @default("")
+
+  // "Addressed rate" analytics + upvote/downvote ratio on Greptile comments.
+  addressed Boolean @default(false)
+  upvotes   Int     @default(0)
+  downvotes Int     @default(0)
+
+  // Which custom context produced this finding, when one did. Drives the
+  // per-context "Uses this month" and acceptance metrics (frame 64).
+  contextId String?
+
+  createdAt DateTime @default(now())
+
+  review  Review         @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  context CustomContext? @relation(fields: [contextId], references: [id], onDelete: SetNull)
+
+  @@index([reviewId])
+  @@index([contextId])
+}
+
+// ---------------------------------------------------------------------------
+// Custom context
+// ---------------------------------------------------------------------------
+
+// Two shapes share this table, distinguished by `type` and by icon tint in the
+// UI: RULE (pink scales icon, authored prose) and PATTERN (indigo folder icon,
+// a case-insensitive glob that auto-discovers files).
+model CustomContext {
+  id    String @id @default(cuid())
+  orgId String
+
+  type String // RULE | PATTERN
+
+  // The description doubles as the display name — editing it renames the row
+  // in the table (frames 66-67).
+  description String
+
+  // PATTERN only. e.g. **/[Aa][Gg][Ee][Nn][Tt][Ss].md
+  pattern String?
+
+  // Scope: a (repository, file-glob) pair. repoId null == all repos, which the
+  // table renders as the org name with a building icon (frame 59).
+  repoId      String?
+  filePattern String @default("auto")
+
+  active Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  org      Organization    @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  repo     Repository?     @relation(fields: [repoId], references: [id], onDelete: SetNull)
+  files    ContextFile[]
+  comments ReviewComment[]
+
+  @@index([orgId])
+}
+
+model ContextFile {
+  id        String @id @default(cuid())
+  contextId String
+  path      String
+  repoId    String
+
+  context CustomContext @relation(fields: [contextId], references: [id], onDelete: Cascade)
+  repo    Repository    @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@index([contextId])
+}
+
+// ---------------------------------------------------------------------------
+// Org configuration
+// ---------------------------------------------------------------------------
+
+model CodeReviewSettings {
+  id    String @id @default(cuid())
+  orgId String @unique
+
+  // "When Greptile Reviews" (frames 87, 90)
+  strictness             String  @default("MEDIUM") // LOW | MEDIUM | HIGH
+  autoReviewOnNewCommits Boolean @default(true)
+  reviewDraftPullRequests Boolean @default(false)
+  fileChangeLimit        Int     @default(100)
+
+  // "PR Summaries" (frames 19, 87, 88). Five composable blocks, each with a
+  // collapsible / default-open pair where default-open is gated on collapsible.
+  updateOriginalSummary Boolean @default(true)
+  blocks                String  @default("{}") // JSON: per-block enabled/collapsible/defaultOpen
+
+  // "Custom Instructions" (frames 89, 91)
+  customInstructions String @default("")
+  commentHeader      String @default("")
+  filters            String @default("[]") // JSON: [{subject, operator, values[]}]
+
+  // "Default Coding Agents" (frames 30-32)
+  codingAgents String @default("[]") // JSON: ["Claude Code", "Cursor", ...]
+
+  // Remaining rail sections
+  statusChecks      Boolean @default(true)
+  autoEnableNewRepos Boolean @default(true)
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------------------
+// Billing and API access
+// ---------------------------------------------------------------------------
+
+model PaymentMethod {
+  id       String @id @default(cuid())
+  orgId    String
+  brand    String // VISA | MASTERCARD | ...
+  last4    String
+  expMonth Int
+  expYear  Int
+  country  String @default("Singapore")
+
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+model Invoice {
+  id     String   @id @default(cuid())
+  orgId  String
+  date   DateTime
+  amount Int // cents
+  status String   @default("PAID")
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+}
+
+// The secret is shown exactly once at creation and stored hashed; the table
+// keeps only a truncated prefix (frames 115-119).
+model ApiKey {
+  id      String @id @default(cuid())
+  orgId   String
+  name    String
+  prefix  String
+  keyHash String
+
+  createdAt  DateTime  @default(now())
+  lastUsedAt DateTime?
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  @@index([orgId])
+}
